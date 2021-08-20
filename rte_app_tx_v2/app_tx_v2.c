@@ -152,7 +152,7 @@ void my_send(struct rte_mempool *mbuf_pool, uint16_t port, uint64_t max_packets)
             my_pkt->eth_hdr.ether_type = htons(PTP_PROTOCOL);
         }
 
-        const uint16_t sent_packets = rte_eth_tx_burst(port, 0, bufs, BURST_SIZE);
+        sent_packets = rte_eth_tx_burst(port, 0, bufs, BURST_SIZE);
         printf("Number of packets tx %" PRIu16 "\n", sent_packets);
 
         j = j + sent_packets;
