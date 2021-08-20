@@ -129,7 +129,7 @@ void my_send(struct rte_mempool *mbuf_pool, uint16_t port, uint64_t max_packets)
     struct rte_mbuf *bufs[BURST_SIZE];
     struct rte_ether_addr src_mac_addr;
     retval = rte_eth_macaddr_get(0, &src_mac_addr); // get MAC address of Port 0 on node1-1
-    struct rte_ether_addr dst_mac_addr = {{0x98,0x03,0x9b,0x7f,0x71,0xc8}}; //MAC address 98:03:9b:7f:71:c8
+    struct rte_ether_addr dst_mac_addr = {{0x98,0x03,0x9b,0x6a,0x8e,0x12}}; //MAC address 98:03:9b:6a:8e:12
     struct my_message *my_pkt;
 
     int j=0;
@@ -178,12 +178,7 @@ main(int argc, char *argv[])
         unsigned nb_ports;
         uint16_t portid;
         uint16_t port;
-        //int retval;
         uint64_t max_packets = 3000000;
-        //struct my_message pkt;
-        //struct my_message *my_pkt;
-        
-        //struct rte_ether_hdr *eth_hdr;
         
         /* Initialize the Environment Abstraction Layer (EAL). */
         int ret = rte_eal_init(argc, argv);
@@ -227,36 +222,7 @@ main(int argc, char *argv[])
                                         "polling thread.\n\tPerformance will "
                                         "not be optimal.\n", port);
 
-        my_send(mbuf_pool, 0, 3000000);
-//        struct rte_mbuf *bufs[BURST_SIZE];
-//        int j=0;
-//        uint16_t sent_packets = BURST_SIZE;
-//        do{
-//            for(int i = 0; i < sent_packets; i ++)
-//            {
-//                bufs[i] = rte_pktmbuf_alloc(mbuf_pool);
-//                my_pkt = rte_pktmbuf_mtod(bufs[i], struct my_message*);
-//                *my_pkt->payload = 'Hello2021';    
-//                int pkt_size = sizeof(struct my_message);
-//                bufs[i]->pkt_len = bufs[i]->data_len = pkt_size;
-//                rte_ether_addr_copy(&src_mac_addr, &my_pkt->eth_hdr.s_addr);
-//                rte_ether_addr_copy(&dst_mac_addr, &my_pkt->eth_hdr.d_addr);
-//                my_pkt->eth_hdr.ether_type = htons(PTP_PROTOCOL);
-//            }
-//
-//            const uint16_t sent_packets = rte_eth_tx_burst(0, 0, bufs, BURST_SIZE);
-//            printf("Number of packets tx %" PRIu16 "\n", sent_packets);
-//
-//            j = j + sent_packets;
-//        }
-//        while(j < max_packets);
-//            /* Free any unsent packets. */
-//         if (unlikely(sent_packets < BURST_SIZE)) {
-//                 uint16_t buf;
-//                 for (buf = sent_packets; buf < BURST_SIZE; buf++)
-//                         rte_pktmbuf_free(bufs[buf]);
-//             }        
-// 
+        my_send(mbuf_pool, 0, 3000000); 
         sleep(1);
         return 0;
 }
