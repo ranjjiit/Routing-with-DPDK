@@ -142,11 +142,11 @@ my_send(struct send_params *p)
     struct rte_mbuf *bufs[BURST_SIZE];
     struct rte_ether_addr src_mac_addr;
     retval = rte_eth_macaddr_get(0, &src_mac_addr); // get MAC address of Port 0 on node1-1
-    struct rte_ether_addr dst_mac_addr = {{0x98,0x03,0x9b,0x6a,0x8e,0x12}}; //MAC address 98:03:9b:6a:8e:12
+    struct rte_ether_addr dst_mac_addr = {{0x98,0x03,0x9b,0x6a,0x8e,0x12}}; //MAC address 98:03:9b:6a:8e:12 
     struct my_message *my_pkt;
     
     struct timespec sys_time;
-    int64_t nsec;
+    uint64_t nsec;
     
     struct rte_mempool *mbuf_pool = p->mbuf_pool;
     uint16_t port = p->port;
@@ -171,13 +171,15 @@ my_send(struct send_params *p)
                 break;
             }
             my_pkt = rte_pktmbuf_mtod(bufs[i], struct my_message*);
-            *my_pkt->payload = 'Hello2021';  
+            memcpy(my_pkt->payload, "Hello2021", 10);
+            my_pkt->payload[9] = 0; // ensure termination 
             
             /* Adding data packet fields*/
-            *my_pkt->timestamp = nsec;
-            *my_pkt->seqNo = seq_num;
-            *my_pkt->src_addr = 101;
-            *my_pkt->dst_addr = 101;
+            my_pkt->timestamp = nsec;
+            my_pkt->seqNo = seq_num;
+            my_pkt->src_addr = 101;
+            my_pkt->dst_addr = 101;
+            my_pkt->type = 1;
             
             int pkt_size = sizeof(struct my_message);
             bufs[i]->pkt_len = bufs[i]->data_len = pkt_size;
@@ -213,7 +215,7 @@ main(int argc, char *argv[])
     unsigned nb_ports;
     uint16_t portid;
     uint16_t port;
-    uint64_t max_packets = 3000000;
+    uint64_t max_packets = 30000;
     unsigned lcore_id;
 
     /* Initialize the Environment Abstraction Layer (EAL). */
