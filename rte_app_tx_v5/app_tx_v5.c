@@ -22,7 +22,6 @@
 #define MBUF_CACHE_SIZE 250
 #define BURST_SIZE 64
 #define PTP_PROTOCOL 0x88F7
-#define MAX_PACKETS 3000000
 
 static struct rte_mempool *mbuf_pool;
 
@@ -201,6 +200,8 @@ my_send(struct send_params *p)
                     rte_pktmbuf_free(bufs[buf]);
         }
     
+    //printf("\n Number of packets transmitted by logical core % "PRId64 " is %"PRId64 "\n", rte_lcore_id(), j);
+    
     return 0;
 }
 
@@ -215,7 +216,7 @@ main(int argc, char *argv[])
     unsigned nb_ports;
     uint16_t portid;
     uint16_t port;
-    uint64_t max_packets = 1000000;
+    uint64_t max_packets = 1000000000;
     unsigned lcore_id;
 
     /* Initialize the Environment Abstraction Layer (EAL). */
@@ -267,11 +268,20 @@ main(int argc, char *argv[])
     struct send_params p1 = {mbuf_pool, 0, 1, max_packets};
     struct send_params p2 = {mbuf_pool, 0, 0, max_packets};
     
-
+    /* Time to send the packets*/
+    struct timespec sys_time;
+    uint64_t nsec1, nsec2;
+    clock_gettime(CLOCK_REALTIME, &sys_time);
+    nsec1 = rte_timespec_to_ns(&sys_time);
+    
     rte_eal_remote_launch((lcore_function_t *)my_send, &p1, lcore_id);
 
     my_send(&p2); 
     
+    clock_gettime(CLOCK_REALTIME, &sys_time);
+    nsec2 = rte_timespec_to_ns(&sys_time);
+    
+    printf("Time to send %"PRIu64 "\n", nsec2-nsec1);
 
     return 0;
 }
