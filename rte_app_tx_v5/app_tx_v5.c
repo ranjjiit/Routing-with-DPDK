@@ -215,7 +215,7 @@ main(int argc, char *argv[])
     unsigned nb_ports;
     uint16_t portid;
     uint16_t port;
-    uint64_t max_packets = 30000;
+    uint64_t max_packets = 1000000;
     unsigned lcore_id;
 
     /* Initialize the Environment Abstraction Layer (EAL). */
@@ -228,7 +228,7 @@ main(int argc, char *argv[])
 
 
     nb_ports = rte_eth_dev_count_avail();
-    printf("Number of ports available%"PRIu16 "\n", nb_ports);
+    printf("Number of ports available %"PRIu16 "\n", nb_ports);
 
     if(nb_ports!=1)
         rte_exit(EXIT_FAILURE, "Error: number of ports must be one\n");
