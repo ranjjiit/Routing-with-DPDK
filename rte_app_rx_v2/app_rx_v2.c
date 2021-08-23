@@ -119,7 +119,7 @@ lcore_stat(__rte_unused void *arg)
 {
     for(; ;)
     {
-        sleep(10); // report stats every second
+        sleep(2); // report stats every second
         printf("Number of packets received %"PRIu64 "\n", rx_count);
     }
 }
@@ -162,7 +162,7 @@ void my_receive(){
             }
             
             //srcAddr = my_pkt->src_addr; 
-            printf("\n Packets received with source address %"PRIu16"\n", my_pkt->src_addr);
+            //printf("\n Packets received with source address %"PRIu16"\n", my_pkt->src_addr);
             
             rte_pktmbuf_free(bufs[i]);
         }
