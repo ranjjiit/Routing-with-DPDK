@@ -127,7 +127,7 @@ struct my_message{
     struct rte_ether_hdr eth_hdr;
     uint16_t type;
     uint16_t dst_addr;
-    uint16_t src_addr;
+    // uint16_t src_addr;
     uint32_t seqNo;
     uint64_t timestamp;
     char payload[10];
@@ -176,7 +176,7 @@ my_send(struct send_params *p)
             /* Adding data packet fields*/
             my_pkt->timestamp = nsec;
             my_pkt->seqNo = seq_num;
-            my_pkt->src_addr = 101;
+            //my_pkt->src_addr = 101;
             my_pkt->dst_addr = 101;
             my_pkt->type = 1;
             
