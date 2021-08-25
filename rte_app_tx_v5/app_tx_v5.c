@@ -193,14 +193,15 @@ my_send(struct send_params *p)
         j = j + sent_packets;
     }
     while(j < max_packets);
+    
+    //printf("\nNumber of packets transmitted by logical core % "PRId64 " is %"PRId64 "\n", rte_lcore_id(), j);
+    
         /* Free any unsent packets. */
     if (unlikely(sent_packets < BURST_SIZE)) {
             uint16_t buf;
             for (buf = sent_packets; buf < BURST_SIZE; buf++)
                     rte_pktmbuf_free(bufs[buf]);
         }
-    
-    //printf("\n Number of packets transmitted by logical core % "PRId64 " is %"PRId64 "\n", rte_lcore_id(), j);
     
     return 0;
 }
@@ -216,7 +217,7 @@ main(int argc, char *argv[])
     unsigned nb_ports;
     uint16_t portid;
     uint16_t port;
-    uint64_t max_packets = 1000000000;
+    uint64_t max_packets = 100000000;
     unsigned lcore_id;
 
     /* Initialize the Environment Abstraction Layer (EAL). */
