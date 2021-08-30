@@ -18,12 +18,13 @@
 #define RX_RING_SIZE 1024
 #define TX_RING_SIZE 1024
 
-#define NUM_MBUFS 8191
+#define NUM_MBUFS ((64*1024)-1)
 #define MBUF_CACHE_SIZE 250
 #define BURST_SIZE 256
 #define PTP_PROTOCOL 0x88F7
 uint64_t rx_count; // global variable to keep track of the number of received packets (to be displayed every second)
-uint64_t max_packets = 100000;
+uint64_t tx_count;
+uint64_t max_packets = 200000;
 
 static const struct rte_eth_conf port_conf_default = {
 	.rxmode = {
@@ -148,6 +149,10 @@ void my_receive()
     struct my_message *my_pkt;
     uint16_t eth_type; 
     rx_count = 0;
+    tx_count = 0;
+    struct rte_ether_addr src_mac_addr;
+    retval = rte_eth_macaddr_get(0, &src_mac_addr); // get MAC address of Port 0 on node1-1
+    struct rte_ether_addr dst_mac_addr;
     
     printf("\nCore %u receiving packets. [Ctrl+C to quit]\n",
                     rte_lcore_id());
@@ -163,28 +168,30 @@ void my_receive()
         if (unlikely(nb_rx == 0))
                 continue;
         
-        printf("\nNumber of packets received at machine 2 is %"PRIu16"\n", nb_rx);
+        //printf("\nNumber of packets received at machine 2 is %"PRIu16"\n", nb_rx);
         
         for(int i = 0; i < nb_rx; i++)
         {
             my_pkt = rte_pktmbuf_mtod(bufs[i], struct my_message *);
-            eth_type = rte_be_to_cpu_16(my_pkt->eth_hdr.ether_type);
+            //eth_type = rte_be_to_cpu_16(my_pkt->eth_hdr.ether_type);
             
             /* Check for data packet of interest and ignore other broadcasts 
              messages */
             
-            if(likely(eth_type == PTP_PROTOCOL))
-            {
+            //if(likely(eth_type == PTP_PROTOCOL))
+            //{
                 rx_count = rx_count + 1;
-                rte_ether_addr_copy(&my_pkt->eth_hdr.s_addr, &my_pkt->eth_hdr.d_addr);
-                rte_ether_addr_copy(&my_pkt->eth_hdr.d_addr, &my_pkt->eth_hdr.s_addr);
-            }
+                struct rte_ether_addr dst_mac_addr = my_pkt->eth_hdr.s_addr; 
+                rte_ether_addr_copy(&src_mac_addr, &my_pkt->eth_hdr.s_addr);
+                rte_ether_addr_copy(&dst_mac_addr, &my_pkt->eth_hdr.d_addr);
+            //}
             
         }
         
         
         uint16_t nb_tx = rte_eth_tx_burst(0, 0, bufs, nb_rx);
-        printf("\nNumber of packets transmitted from machine 2 is %"PRIu16"\n", nb_tx);
+        tx_count = tx_count + nb_tx;
+        //printf("\nNumber of packets transmitted from machine 2 is %"PRIu16"\n", nb_tx);
         
         if(unlikely(nb_tx < nb_rx))
         {
@@ -194,6 +201,8 @@ void my_receive()
         }
         
     }while(rx_count < max_packets);
+    printf("\nTotal Number of packets received by machine 2 is %"PRIu64, rx_count);
+    printf("\nTotal Number of packets transmitted by machine 2 is %"PRIu64"\n", tx_count);
 }
 
 /*
