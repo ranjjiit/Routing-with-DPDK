@@ -14,6 +14,8 @@
 #include <rte_hash.h>
 #include <rte_jhash.h>
 #include <rte_mbuf_dyn.h>
+#include <sys/time.h>
+#include <rte_time.h>
 
 #define RX_RING_SIZE 1024
 #define TX_RING_SIZE 1024
@@ -24,7 +26,7 @@
 #define PTP_PROTOCOL 0x88F7
 uint64_t rx_count; // global variable to keep track of the number of received packets (to be displayed every second)
 uint64_t tx_count;
-uint64_t max_packets = 200000;
+uint64_t max_packets = 2000000;
 
 static int hwts_dynfield_offset = -1;
 typedef uint64_t tsc_t;
@@ -252,6 +254,7 @@ void my_receive()
         }
         
     }while(rx_count <= max_packets);
+    
     printf("\nTotal Number of packets received by machine 2 is %"PRIu64, rx_count);
     printf("\nTotal Number of packets transmitted by machine 2 is %"PRIu64"\n", tx_count);
 }
@@ -313,7 +316,18 @@ main(int argc, char *argv[])
 //    }
 //    rte_eal_remote_launch(lcore_stat, NULL, lcore_id);
     
+    /* Time to process the packets*/
+    struct timespec sys_time;
+    uint64_t nsec1, nsec2;
+    clock_gettime(CLOCK_REALTIME, &sys_time);
+    nsec1 = rte_timespec_to_ns(&sys_time);
+    
     my_receive();
+    
+    clock_gettime(CLOCK_REALTIME, &sys_time);
+    nsec2 = rte_timespec_to_ns(&sys_time);
+    printf("Time to process %"PRIu64 "\n", nsec2-nsec1);
+    
     
     return 0;
 }
