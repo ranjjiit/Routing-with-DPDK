@@ -154,6 +154,7 @@ void my_receive()
 
         if (unlikely(nb_rx == 0))
                 continue;
+//        printf("\nNumber of packets received by machine 1 %"PRIu16, nb_rx);
         
         for(int i = 0; i < nb_rx; i++)
         {
@@ -163,15 +164,15 @@ void my_receive()
             /* Check for data packet of interest and ignore other broadcasts 
              messages */
             
-            if(likely(eth_type == PTP_PROTOCOL))
-            {
+            //if(likely(eth_type == PTP_PROTOCOL))
+            //{
                 rx_count = rx_count + 1;
-            }
+            //}
             rte_pktmbuf_free(bufs[i]);
         }
         //printf("\nNumber of packets received at machine 1 % "PRIu64 "\n", rx_count);
     }
-    printf("\nNumber of packets received at machine 1 % "PRIu64 "\n", rx_count);
+    //printf(" \n Total Number of packets received at machine 1 % "PRIu64 "\n", rx_count);
 }
 
 static int
@@ -300,8 +301,18 @@ main(int argc, char *argv[])
                     printf("WARNING, port %u is on remote NUMA node to "
                                     "polling thread.\n\tPerformance will "
                                     "not be optimal.\n", port);
-
+    
+    
+    /* call receive function on another lcore*/
     lcore_id = rte_get_next_lcore(-1, 1, 0);
+    if(lcore_id == RTE_MAX_LCORE)
+    {
+        rte_exit(EXIT_FAILURE, "Slave core id required!");
+    }
+    rte_eal_remote_launch(my_receive, NULL, lcore_id);
+    
+
+    lcore_id = rte_get_next_lcore(lcore_id, 1, 0);
     if(lcore_id == RTE_MAX_LCORE)
     {
         rte_exit(EXIT_FAILURE, "Slave core id required!");
@@ -310,25 +321,17 @@ main(int argc, char *argv[])
     struct send_params p1 = {mbuf_pool, 0, 1, max_packets};
     struct send_params p2 = {mbuf_pool, 0, 0, max_packets};
     
-    /* Time to send the packets*/
-    struct timespec sys_time;
-    uint64_t nsec1, nsec2;
-    clock_gettime(CLOCK_REALTIME, &sys_time);
-    nsec1 = rte_timespec_to_ns(&sys_time);
+//    /* Time to send the packets*/
+//    struct timespec sys_time;
+//    uint64_t nsec1, nsec2;
+//    clock_gettime(CLOCK_REALTIME, &sys_time);
+//    nsec1 = rte_timespec_to_ns(&sys_time);
     
     rte_eal_remote_launch((lcore_function_t *)my_send, &p1, lcore_id);
 
     my_send(&p2); 
     
-    /* call receive function on another lcore*/
-    lcore_id = rte_get_next_lcore(lcore_id, 1, 0);
-    if(lcore_id == RTE_MAX_LCORE)
-    {
-        rte_exit(EXIT_FAILURE, "Slave core id required!");
-    }
-    rte_eal_remote_launch(my_receive, NULL, lcore_id);
-    
-
+    printf("\nTotal number of packets received by machine 1 is %"PRIu64"\n", rx_count);
  
     return 0;
 }
