@@ -26,7 +26,7 @@
 #define PTP_PROTOCOL 0x88F7
 uint64_t rx_count; // global variable to keep track of the number of received packets (to be displayed every second)
 uint64_t tx_count;
-uint64_t max_packets = 2000000;
+uint64_t max_packets = 1000000;
 
 static int hwts_dynfield_offset = -1;
 typedef uint64_t tsc_t;
@@ -214,7 +214,7 @@ void my_receive()
     printf("\nCore %u receiving packets. [Ctrl+C to quit]\n",
                     rte_lcore_id());
     
-    /* Run until the application is quit or killed. */
+    /* Receive maximum of max_packets */
     do{
         
         /* Get burst of RX packets, from first port of pair. */
@@ -237,6 +237,7 @@ void my_receive()
             {
                 rx_count = rx_count + 1;
                 struct rte_ether_addr dst_mac_addr = my_pkt->eth_hdr.s_addr; 
+                
                 rte_ether_addr_copy(&src_mac_addr, &my_pkt->eth_hdr.s_addr);
                 rte_ether_addr_copy(&dst_mac_addr, &my_pkt->eth_hdr.d_addr);
             }
