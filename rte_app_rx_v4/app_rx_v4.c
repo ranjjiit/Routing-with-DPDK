@@ -26,6 +26,63 @@ uint64_t rx_count; // global variable to keep track of the number of received pa
 uint64_t tx_count;
 uint64_t max_packets = 200000;
 
+static int hwts_dynfield_offset = -1;
+typedef uint64_t tsc_t;
+static int tsc_dynfield_offset = -1;
+static inline tsc_t *
+tsc_field(struct rte_mbuf *mbuf)
+{
+    return RTE_MBUF_DYNFIELD(mbuf, tsc_dynfield_offset, tsc_t *);
+}
+static const char usage[] =
+    "%s EAL_ARGS -- [-t]\n";
+static struct {
+    uint64_t total_cycles;
+    uint64_t total_queue_cycles;
+    uint64_t total_pkts;
+} latency_numbers;
+int hw_timestamping;
+#define TICKS_PER_CYCLE_SHIFT 16
+static uint64_t ticks_per_cycle_mult;
+/* Callback added to the RX port and applied to packets. 8< */
+static uint16_t
+add_timestamps(uint16_t port __rte_unused, uint16_t qidx __rte_unused,
+        struct rte_mbuf **pkts, uint16_t nb_pkts,
+        uint16_t max_pkts __rte_unused, void *_ __rte_unused)
+{
+    unsigned i;
+    uint64_t now = rte_rdtsc();
+    for (i = 0; i < nb_pkts; i++)
+        *tsc_field(pkts[i]) = now;
+    return nb_pkts;
+}
+/* >8 End of callback addition and application. */
+/* Callback is added to the TX port. 8< */
+static uint16_t
+calc_latency(uint16_t port, uint16_t qidx __rte_unused,
+        struct rte_mbuf **pkts, uint16_t nb_pkts, void *_ __rte_unused)
+{
+    uint64_t cycles = 0;
+    uint64_t now = rte_rdtsc();
+    unsigned i;
+
+    for (i = 0; i < nb_pkts; i++) {
+        cycles += now - *tsc_field(pkts[i]);   
+    }
+    latency_numbers.total_cycles += cycles;
+    latency_numbers.total_pkts += nb_pkts;
+    if (latency_numbers.total_pkts > (100 * 1000 * 1000ULL)) {
+        printf("Latency = %"PRIu64" cycles\n",
+        latency_numbers.total_cycles / latency_numbers.total_pkts);
+        latency_numbers.total_cycles = 0;
+        latency_numbers.total_queue_cycles = 0;
+        latency_numbers.total_pkts = 0;
+    }
+    return nb_pkts;
+}
+/* >8 End of callback addition. */
+
+
 static const struct rte_eth_conf port_conf_default = {
 	.rxmode = {
 		.max_rx_pkt_len = RTE_ETHER_MAX_LEN,
@@ -64,7 +121,7 @@ port_init(uint16_t port, struct rte_mempool *mbuf_pool)
 	if (dev_info.tx_offload_capa & DEV_TX_OFFLOAD_MBUF_FAST_FREE)
 		port_conf.txmode.offloads |=
 			DEV_TX_OFFLOAD_MBUF_FAST_FREE;
-
+        
 	/* Configure the Ethernet device. */
 	retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
 	if (retval != 0)
@@ -115,10 +172,10 @@ port_init(uint16_t port, struct rte_mempool *mbuf_pool)
 	if (retval != 0)
 		return retval;
         
-//        /* RX and TX callbacks are added to the ports. 8< */
+        /* RX and TX callbacks are added to the ports. 8< */
 //	rte_eth_add_rx_callback(0, 0, add_timestamps, NULL);
 //	rte_eth_add_tx_callback(0, 0, calc_latency, NULL);
-//	/* >8 End of RX and TX callbacks. */
+	/* >8 End of RX and TX callbacks. */
 
 	return 0;
 }
@@ -136,7 +193,6 @@ struct my_message{
     struct rte_ether_hdr eth_hdr;
     uint16_t type;
     uint16_t dst_addr;
-    //uint16_t src_addr;
     uint32_t seqNo;
     uint64_t timestamp;
     char payload[10];
@@ -152,7 +208,6 @@ void my_receive()
     tx_count = 0;
     struct rte_ether_addr src_mac_addr;
     retval = rte_eth_macaddr_get(0, &src_mac_addr); // get MAC address of Port 0 on node1-1
-    struct rte_ether_addr dst_mac_addr;
     
     printf("\nCore %u receiving packets. [Ctrl+C to quit]\n",
                     rte_lcore_id());
@@ -162,36 +217,32 @@ void my_receive()
         
         /* Get burst of RX packets, from first port of pair. */
         struct rte_mbuf *bufs[BURST_SIZE];
-        uint16_t nb_rx = rte_eth_rx_burst(0, 0,
+        const uint16_t nb_rx = rte_eth_rx_burst(0, 0,
                         bufs, BURST_SIZE);
         
         if (unlikely(nb_rx == 0))
                 continue;
         
-        //printf("\nNumber of packets received at machine 2 is %"PRIu16"\n", nb_rx);
-        
         for(int i = 0; i < nb_rx; i++)
         {
             my_pkt = rte_pktmbuf_mtod(bufs[i], struct my_message *);
-            //eth_type = rte_be_to_cpu_16(my_pkt->eth_hdr.ether_type);
+            eth_type = rte_be_to_cpu_16(my_pkt->eth_hdr.ether_type);
             
             /* Check for data packet of interest and ignore other broadcasts 
              messages */
             
-            //if(likely(eth_type == PTP_PROTOCOL))
-            //{
+            if(likely(eth_type == PTP_PROTOCOL))
+            {
                 rx_count = rx_count + 1;
                 struct rte_ether_addr dst_mac_addr = my_pkt->eth_hdr.s_addr; 
                 rte_ether_addr_copy(&src_mac_addr, &my_pkt->eth_hdr.s_addr);
                 rte_ether_addr_copy(&dst_mac_addr, &my_pkt->eth_hdr.d_addr);
-            //}
+            }
             
         }
         
-        
-        uint16_t nb_tx = rte_eth_tx_burst(0, 0, bufs, nb_rx);
+        const uint16_t nb_tx = rte_eth_tx_burst(0, 0, bufs, nb_rx);
         tx_count = tx_count + nb_tx;
-        //printf("\nNumber of packets transmitted from machine 2 is %"PRIu16"\n", nb_tx);
         
         if(unlikely(nb_tx < nb_rx))
         {
@@ -200,7 +251,7 @@ void my_receive()
                 rte_pktmbuf_free(bufs[buf]);
         }
         
-    }while(rx_count < max_packets);
+    }while(rx_count <= max_packets);
     printf("\nTotal Number of packets received by machine 2 is %"PRIu64, rx_count);
     printf("\nTotal Number of packets transmitted by machine 2 is %"PRIu64"\n", tx_count);
 }
