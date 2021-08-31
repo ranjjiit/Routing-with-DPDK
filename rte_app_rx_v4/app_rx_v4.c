@@ -26,7 +26,8 @@
 #define PTP_PROTOCOL 0x88F7
 uint64_t rx_count; // global variable to keep track of the number of received packets (to be displayed every second)
 uint64_t tx_count;
-uint64_t max_packets = 1000000;
+uint64_t max_packets = 100000;
+uint64_t nsec1, nsec2;
 
 static int hwts_dynfield_offset = -1;
 typedef uint64_t tsc_t;
@@ -189,6 +190,7 @@ lcore_stat(__rte_unused void *arg)
     {
         sleep(2); // report stats every second
         printf("Number of packets received %"PRIu64 "\n", rx_count);
+        printf("Number of packets transmitted %"PRIu64 "\n", tx_count);
     }
 }
 struct my_message{
@@ -208,15 +210,27 @@ void my_receive()
     uint16_t eth_type; 
     rx_count = 0;
     tx_count = 0;
+    uint64_t cycles = 0;
     struct rte_ether_addr src_mac_addr;
     retval = rte_eth_macaddr_get(0, &src_mac_addr); // get MAC address of Port 0 on node1-1
     
-    printf("\nCore %u receiving packets. [Ctrl+C to quit]\n",
-                    rte_lcore_id());
+    //printf("\nCore %u receiving packets. [Ctrl+C to quit]\n",
+                    //rte_lcore_id());
+    
+    struct timespec sys_time;
+    uint64_t now, time_diff;
+    
+    //uint64_t nsec1, nsec2;
+//    clock_gettime(CLOCK_REALTIME, &sys_time);
+//    nsec1 = rte_timespec_to_ns(&sys_time);
+    //printf("Start time %"PRIu64"\n", nsec1);
     
     /* Receive maximum of max_packets */
-    do{
-        
+    for(;;){
+//        cycles = 0;
+//        uint64_t now = rte_rdtsc();
+        clock_gettime(CLOCK_REALTIME, &sys_time);
+        now = rte_timespec_to_ns(&sys_time);
         /* Get burst of RX packets, from first port of pair. */
         struct rte_mbuf *bufs[BURST_SIZE];
         const uint16_t nb_rx = rte_eth_rx_burst(0, 0,
@@ -241,7 +255,7 @@ void my_receive()
                 rte_ether_addr_copy(&src_mac_addr, &my_pkt->eth_hdr.s_addr);
                 rte_ether_addr_copy(&dst_mac_addr, &my_pkt->eth_hdr.d_addr);
             }
-            
+            //rte_pktmbuf_free(bufs[i]);
         }
         
         const uint16_t nb_tx = rte_eth_tx_burst(0, 0, bufs, nb_rx);
@@ -253,11 +267,18 @@ void my_receive()
             for(buf = nb_tx; buf < nb_rx; buf++)
                 rte_pktmbuf_free(bufs[buf]);
         }
+        clock_gettime(CLOCK_REALTIME, &sys_time);
         
-    }while(rx_count <= max_packets);
+        time_diff = rte_timespec_to_ns(&sys_time) - now;
+        
+    }
     
-    printf("\nTotal Number of packets received by machine 2 is %"PRIu64, rx_count);
-    printf("\nTotal Number of packets transmitted by machine 2 is %"PRIu64"\n", tx_count);
+//    clock_gettime(CLOCK_REALTIME, &sys_time);
+//    nsec2 = rte_timespec_to_ns(&sys_time);
+//    printf("Time to process %"PRIu64 "\n", nsec2-nsec1);
+    
+    //printf("\nTotal Number of packets received by machine 2 is %"PRIu64, rx_count);
+    //printf("\nTotal Number of packets transmitted by machine 2 is %"PRIu64"\n", tx_count);
 }
 
 /*
@@ -310,24 +331,24 @@ main(int argc, char *argv[])
                                     "not be optimal.\n", port);
 
 
-//    lcore_id = rte_get_next_lcore(-1, 1, 0);
-//    if(lcore_id == RTE_MAX_LCORE)
-//    {
-//        rte_exit(EXIT_FAILURE, "Slave core id required!");
-//    }
-//    rte_eal_remote_launch(lcore_stat, NULL, lcore_id);
+    lcore_id = rte_get_next_lcore(-1, 1, 0);
+    if(lcore_id == RTE_MAX_LCORE)
+    {
+        rte_exit(EXIT_FAILURE, "Slave core id required!");
+    }
+    rte_eal_remote_launch(lcore_stat, NULL, lcore_id);
     
     /* Time to process the packets*/
-    struct timespec sys_time;
-    uint64_t nsec1, nsec2;
-    clock_gettime(CLOCK_REALTIME, &sys_time);
-    nsec1 = rte_timespec_to_ns(&sys_time);
+//    struct timespec sys_time;
+//    uint64_t nsec1, nsec2;
+//    clock_gettime(CLOCK_REALTIME, &sys_time);
+//    nsec1 = rte_timespec_to_ns(&sys_time);
     
     my_receive();
     
-    clock_gettime(CLOCK_REALTIME, &sys_time);
-    nsec2 = rte_timespec_to_ns(&sys_time);
-    printf("Time to process %"PRIu64 "\n", nsec2-nsec1);
+//    clock_gettime(CLOCK_REALTIME, &sys_time);
+//    nsec2 = rte_timespec_to_ns(&sys_time);
+//    printf("Time to process %"PRIu64 "\n", nsec2-nsec1);
     
     
     return 0;
