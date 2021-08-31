@@ -124,6 +124,17 @@ port_init(uint16_t port, struct rte_mempool *mbuf_pool)
         return 0;
 }
 
+static int
+lcore_stat(__rte_unused void *arg)
+{
+    for(; ;)
+    {
+        sleep(2); // report stats every second
+        printf("Number of packets received %"PRIu64 "\n", rx_count);
+        //printf("Number of packets transmitted %"PRIu64 "\n", tx_count);
+    }
+}
+
 struct my_message{
     struct rte_ether_hdr eth_hdr;
     uint16_t type;
@@ -164,10 +175,10 @@ void my_receive()
             /* Check for data packet of interest and ignore other broadcasts 
              messages */
             
-            //if(likely(eth_type == PTP_PROTOCOL))
-            //{
+            if(likely(eth_type == PTP_PROTOCOL))
+            {
                 rx_count = rx_count + 1;
-            //}
+            }
             rte_pktmbuf_free(bufs[i]);
         }
         //printf("\nNumber of packets received at machine 1 % "PRIu64 "\n", rx_count);
@@ -196,6 +207,7 @@ my_send(struct send_params *p)
 
     int j=0;
     uint16_t sent_packets = BURST_SIZE;
+    //for(;;){
     do{
         
         /* Adding same timestamp to a batch of packets*/
@@ -302,6 +314,8 @@ main(int argc, char *argv[])
                                     "polling thread.\n\tPerformance will "
                                     "not be optimal.\n", port);
     
+        //struct send_params p1 = {mbuf_pool, 0, 1, max_packets};
+    struct send_params p2 = {mbuf_pool, 0, 0, max_packets};
     
     /* call receive function on another lcore*/
     lcore_id = rte_get_next_lcore(-1, 1, 0);
@@ -309,7 +323,8 @@ main(int argc, char *argv[])
     {
         rte_exit(EXIT_FAILURE, "Slave core id required!");
     }
-    rte_eal_remote_launch(my_receive, NULL, lcore_id);
+    rte_eal_remote_launch((lcore_function_t *)my_send, &p2, lcore_id);
+    //rte_eal_remote_launch((lcore_function_t *)my_receive, NULL, lcore_id);
     
 
     lcore_id = rte_get_next_lcore(lcore_id, 1, 0);
@@ -317,9 +332,9 @@ main(int argc, char *argv[])
     {
         rte_exit(EXIT_FAILURE, "Slave core id required!");
     }
+    rte_eal_remote_launch(lcore_stat, NULL, lcore_id);
     
-    struct send_params p1 = {mbuf_pool, 0, 1, max_packets};
-    struct send_params p2 = {mbuf_pool, 0, 0, max_packets};
+
     
 //    /* Time to send the packets*/
 //    struct timespec sys_time;
@@ -327,11 +342,12 @@ main(int argc, char *argv[])
 //    clock_gettime(CLOCK_REALTIME, &sys_time);
 //    nsec1 = rte_timespec_to_ns(&sys_time);
     
-    rte_eal_remote_launch((lcore_function_t *)my_send, &p1, lcore_id);
+    //rte_eal_remote_launch((lcore_function_t *)my_send, &p1, lcore_id);
 
-    my_send(&p2); 
+    //my_send(&p2); 
+    my_receive();
     
-    printf("\nTotal number of packets received by machine 1 is %"PRIu64"\n", rx_count);
+    //printf("\nTotal number of packets received by machine 1 is %"PRIu64"\n", rx_count);
  
     return 0;
 }
