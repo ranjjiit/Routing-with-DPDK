@@ -210,7 +210,9 @@ void my_receive()
     uint16_t eth_type; 
     rx_count = 0;
     tx_count = 0;
-    uint64_t cycles = 0;
+    latency_numbers.total_cycles = 0;
+    latency_numbers.total_pkts = 0;
+    latency_numbers.total_queue_cycles = 0;
     struct rte_ether_addr src_mac_addr;
     retval = rte_eth_macaddr_get(0, &src_mac_addr); // get MAC address of Port 0 on node1-1
     
@@ -220,15 +222,8 @@ void my_receive()
     struct timespec sys_time;
     uint64_t now, time_diff;
     
-    //uint64_t nsec1, nsec2;
-//    clock_gettime(CLOCK_REALTIME, &sys_time);
-//    nsec1 = rte_timespec_to_ns(&sys_time);
-    //printf("Start time %"PRIu64"\n", nsec1);
-    
     /* Receive maximum of max_packets */
     for(;;){
-//        cycles = 0;
-//        uint64_t now = rte_rdtsc();
         clock_gettime(CLOCK_REALTIME, &sys_time);
         now = rte_timespec_to_ns(&sys_time);
         /* Get burst of RX packets, from first port of pair. */
@@ -249,13 +244,13 @@ void my_receive()
             
             if(likely(eth_type == PTP_PROTOCOL))
             {
+                //printf("Packet length %"PRIu32"\n",rte_pktmbuf_pkt_len(bufs[i]));
                 rx_count = rx_count + 1;
                 struct rte_ether_addr dst_mac_addr = my_pkt->eth_hdr.s_addr; 
                 
                 rte_ether_addr_copy(&src_mac_addr, &my_pkt->eth_hdr.s_addr);
                 rte_ether_addr_copy(&dst_mac_addr, &my_pkt->eth_hdr.d_addr);
             }
-            //rte_pktmbuf_free(bufs[i]);
         }
         
         const uint16_t nb_tx = rte_eth_tx_burst(0, 0, bufs, nb_rx);
@@ -268,14 +263,17 @@ void my_receive()
                 rte_pktmbuf_free(bufs[buf]);
         }
         clock_gettime(CLOCK_REALTIME, &sys_time);
-        
         time_diff = rte_timespec_to_ns(&sys_time) - now;
-        
+        latency_numbers.total_cycles += time_diff;
+        latency_numbers.total_pkts += nb_rx;
+        if (latency_numbers.total_pkts > (100 * 1000)) {
+            printf("Latency = %"PRIu64" ns\n",
+            latency_numbers.total_cycles / latency_numbers.total_pkts);
+            latency_numbers.total_cycles = 0;
+            latency_numbers.total_queue_cycles = 0;
+            latency_numbers.total_pkts = 0;
+        }
     }
-    
-//    clock_gettime(CLOCK_REALTIME, &sys_time);
-//    nsec2 = rte_timespec_to_ns(&sys_time);
-//    printf("Time to process %"PRIu64 "\n", nsec2-nsec1);
     
     //printf("\nTotal Number of packets received by machine 2 is %"PRIu64, rx_count);
     //printf("\nTotal Number of packets transmitted by machine 2 is %"PRIu64"\n", tx_count);
