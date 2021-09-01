@@ -143,6 +143,16 @@ struct my_message{
     uint32_t seqNo;
     uint64_t timestamp;
     char payload[10];
+//    uint64_t tmp1;
+//    uint64_t tmp2;
+//    uint64_t tmp3;
+//    uint64_t tmp4;
+//    uint64_t tmp5;
+//    uint64_t tmp6;
+//    uint64_t tmp7;
+//    uint64_t tmp8;
+//    uint64_t tmp9;
+   // uint64_t = tmp10;
 };
 
 void my_receive()
@@ -233,12 +243,17 @@ my_send(struct send_params *p)
             //my_pkt->src_addr = 101;
             my_pkt->dst_addr = 101;
             my_pkt->type = 1;
+            //my_pkt->tmp1 = my_pkt->tmp1 = my_pkt->tmp = my_pkt->tmp4= my_pkt->tmp5
             
-            int pkt_size = sizeof(struct my_message);
-            bufs[i]->pkt_len = bufs[i]->data_len = pkt_size;
+//            int pkt_size = sizeof(struct my_message);
+//            bufs[i]->pkt_len = 100;
+//            bufs[i]->data_len = pkt_size;
             rte_ether_addr_copy(&src_mac_addr, &my_pkt->eth_hdr.s_addr);
             rte_ether_addr_copy(&dst_mac_addr, &my_pkt->eth_hdr.d_addr);
             my_pkt->eth_hdr.ether_type = htons(PTP_PROTOCOL);
+            int pkt_size = sizeof(struct my_message)*10;
+            bufs[i]->pkt_len = pkt_size;
+            bufs[i]->data_len = pkt_size;
         }
 
         sent_packets = rte_eth_tx_burst(port, queue_id, bufs, BURST_SIZE);
@@ -271,7 +286,7 @@ main(int argc, char *argv[])
     unsigned nb_ports;
     uint16_t portid;
     uint16_t port;
-    uint64_t max_packets = 100000;
+    uint64_t max_packets = 1000000;
     unsigned lcore_id;
 
     /* Initialize the Environment Abstraction Layer (EAL). */
