@@ -29,7 +29,6 @@ uint64_t tx_count;
 uint64_t max_packets = 100000;
 uint64_t nsec1, nsec2;
 
-static int hwts_dynfield_offset = -1;
 typedef uint64_t tsc_t;
 static int tsc_dynfield_offset = -1;
 static inline tsc_t *
@@ -44,7 +43,7 @@ static struct {
     uint64_t total_queue_cycles;
     uint64_t total_pkts;
 } latency_numbers;
-int hw_timestamping;
+
 #define TICKS_PER_CYCLE_SHIFT 16
 static uint64_t ticks_per_cycle_mult;
 /* Callback added to the RX port and applied to packets. 8< */
@@ -175,11 +174,27 @@ port_init(uint16_t port, struct rte_mempool *mbuf_pool)
 	if (retval != 0)
 		return retval;
         
+        const struct rte_eth_rxtx_callback *cb;
+        
         /* RX and TX callbacks are added to the ports. 8< */
-//	rte_eth_add_rx_callback(0, 0, add_timestamps, NULL);
-//	rte_eth_add_tx_callback(0, 0, calc_latency, NULL);
+	cb = rte_eth_add_rx_callback(0, 0, add_timestamps, NULL);
+        if (cb == NULL){
+            printf("Failed to install Rx callback on port %u \n", port);
+            return -ENOMEM;
+        }
+        else
+            printf("Rx callback successfully installed on port %u. \n", port);
+        
+	cb = rte_eth_add_tx_callback(0, 0, calc_latency, NULL);
+        if(cb == NULL){
+            printf("Failed to install Tx callback on port %u \n", port);
+            return -ENOMEM;
+        }
+        else
+            printf("Tx callback successfully installed on port %u. \n", port);
 	/* >8 End of RX and TX callbacks. */
 
+        
 	return 0;
 }
 
@@ -210,22 +225,14 @@ void my_receive()
     uint16_t eth_type; 
     rx_count = 0;
     tx_count = 0;
-    latency_numbers.total_cycles = 0;
-    latency_numbers.total_pkts = 0;
-    latency_numbers.total_queue_cycles = 0;
     struct rte_ether_addr src_mac_addr;
-    retval = rte_eth_macaddr_get(0, &src_mac_addr); // get MAC address of Port 0 on node1-1
+    retval = rte_eth_macaddr_get(0, &src_mac_addr); 
     
-    //printf("\nCore %u receiving packets. [Ctrl+C to quit]\n",
-                    //rte_lcore_id());
-    
-    struct timespec sys_time;
-    uint64_t now, time_diff;
+    printf("\nCore %u receiving packets. [Ctrl+C to quit]\n",
+                    rte_lcore_id());
     
     /* Receive maximum of max_packets */
     for(;;){
-        clock_gettime(CLOCK_REALTIME, &sys_time);
-        now = rte_timespec_to_ns(&sys_time);
         /* Get burst of RX packets, from first port of pair. */
         struct rte_mbuf *bufs[BURST_SIZE];
         const uint16_t nb_rx = rte_eth_rx_burst(0, 0,
@@ -262,21 +269,7 @@ void my_receive()
             for(buf = nb_tx; buf < nb_rx; buf++)
                 rte_pktmbuf_free(bufs[buf]);
         }
-        clock_gettime(CLOCK_REALTIME, &sys_time);
-        time_diff = rte_timespec_to_ns(&sys_time) - now;
-        latency_numbers.total_cycles += time_diff;
-        latency_numbers.total_pkts += nb_rx;
-        if (latency_numbers.total_pkts > (100 * 1000)) {
-            printf("Latency = %"PRIu64" ns\n",
-            latency_numbers.total_cycles / latency_numbers.total_pkts);
-            latency_numbers.total_cycles = 0;
-            latency_numbers.total_queue_cycles = 0;
-            latency_numbers.total_pkts = 0;
-        }
     }
-    
-    //printf("\nTotal Number of packets received by machine 2 is %"PRIu64, rx_count);
-    //printf("\nTotal Number of packets transmitted by machine 2 is %"PRIu64"\n", tx_count);
 }
 
 /*
@@ -336,18 +329,8 @@ main(int argc, char *argv[])
     }
     rte_eal_remote_launch(lcore_stat, NULL, lcore_id);
     
-    /* Time to process the packets*/
-//    struct timespec sys_time;
-//    uint64_t nsec1, nsec2;
-//    clock_gettime(CLOCK_REALTIME, &sys_time);
-//    nsec1 = rte_timespec_to_ns(&sys_time);
     
     my_receive();
-    
-//    clock_gettime(CLOCK_REALTIME, &sys_time);
-//    nsec2 = rte_timespec_to_ns(&sys_time);
-//    printf("Time to process %"PRIu64 "\n", nsec2-nsec1);
-    
     
     return 0;
 }
