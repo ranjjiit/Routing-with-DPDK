@@ -21,6 +21,7 @@
 #define NUM_MBUFS ((64*1024)-1)
 #define MBUF_CACHE_SIZE 250
 #define BURST_SIZE 256
+#define CONTROL_BURST_SIZE 32
 #define PTP_PROTOCOL 0x88F7
 uint64_t rx_count;
 
@@ -39,7 +40,6 @@ struct send_params{
     uint64_t max_packets;
 };
 
-/* basicfwd.c: Basic DPDK skeleton forwarding example. */
 
 /*
  * Initializes a given port using global settings and with the RX buffers
@@ -139,20 +139,17 @@ struct my_message{
     struct rte_ether_hdr eth_hdr;
     uint16_t type;
     uint16_t dst_addr;
-    // uint16_t src_addr;
     uint32_t seqNo;
-    uint64_t timestamp;
+    uint64_t T; // timestamp for data update
+    uint64_t t; // timestamp for control packet
     char payload[10];
-//    uint64_t tmp1;
-//    uint64_t tmp2;
-//    uint64_t tmp3;
-//    uint64_t tmp4;
-//    uint64_t tmp5;
-//    uint64_t tmp6;
-//    uint64_t tmp7;
-//    uint64_t tmp8;
-//    uint64_t tmp9;
-   // uint64_t = tmp10;
+};
+
+struct control_message{
+    struct rte_ether_hdr eth_hdr;
+    uint16_t type;
+    uint16_t dst_addr;
+    uint64_t t; // timestamp for control packet
 };
 
 void my_receive()
@@ -200,12 +197,6 @@ static int
 my_send(struct send_params *p)
 {
     int retval;
-    uint32_t seq_num = 0;
-    struct rte_mbuf *bufs[BURST_SIZE];
-    struct rte_ether_addr src_mac_addr;
-    retval = rte_eth_macaddr_get(0, &src_mac_addr); // get MAC address of Port 0 on node1-1
-    struct rte_ether_addr dst_mac_addr = {{0x98,0x03,0x9b,0x6a,0x8e,0x12}}; //MAC address 98:03:9b:6a:8e:12 
-    struct my_message *my_pkt;
     
     struct timespec sys_time;
     uint64_t nsec;
@@ -215,6 +206,13 @@ my_send(struct send_params *p)
     uint16_t queue_id = p->queue_id;
     uint64_t max_packets = p->max_packets;
 
+    uint32_t seq_num = 0;
+    struct rte_mbuf *bufs[BURST_SIZE];
+    struct rte_ether_addr src_mac_addr;
+    retval = rte_eth_macaddr_get(0, &src_mac_addr); // get MAC address of Port 0 on node1-1
+    struct rte_ether_addr dst_mac_addr = {{0x98,0x03,0x9b,0x6a,0x8e,0x12}}; //MAC address 98:03:9b:6a:8e:12 
+    struct my_message *my_pkt;
+    
     int j=0;
     uint16_t sent_packets = BURST_SIZE;
     //for(;;){
@@ -238,16 +236,12 @@ my_send(struct send_params *p)
             my_pkt->payload[9] = 0; // ensure termination 
             
             /* Adding data packet fields*/
-            my_pkt->timestamp = nsec;
+            my_pkt->T = nsec; //add timestamp to data packet
+            my_pkt->t = 0; // empty timestamp of control packet
             my_pkt->seqNo = seq_num;
-            //my_pkt->src_addr = 101;
             my_pkt->dst_addr = 101;
             my_pkt->type = 1;
-            //my_pkt->tmp1 = my_pkt->tmp1 = my_pkt->tmp = my_pkt->tmp4= my_pkt->tmp5
-            
-//            int pkt_size = sizeof(struct my_message);
-//            bufs[i]->pkt_len = 100;
-//            bufs[i]->data_len = pkt_size;
+
             rte_ether_addr_copy(&src_mac_addr, &my_pkt->eth_hdr.s_addr);
             rte_ether_addr_copy(&dst_mac_addr, &my_pkt->eth_hdr.d_addr);
             my_pkt->eth_hdr.ether_type = htons(PTP_PROTOCOL);
@@ -275,6 +269,71 @@ my_send(struct send_params *p)
     return 0;
 }
 
+/* send control packets*/
+static int
+send_control(struct send_params *p)
+{
+    int retval;
+    
+    struct rte_mempool *mbuf_pool = p->mbuf_pool;
+    uint16_t port = p->port;
+    uint16_t queue_id = p->queue_id;
+    uint64_t max_packets = p->max_packets;
+    
+    struct rte_mbuf *bufs[BURST_SIZE];
+    struct rte_ether_addr src_mac_addr;
+    retval = rte_eth_macaddr_get(port, &src_mac_addr); // get MAC address of Port 0 on node1-1
+    struct rte_ether_addr dst_mac_addr = {{0x98,0x03,0x9b,0x6a,0x8e,0x12}}; //MAC address 98:03:9b:6a:8e:12 
+    struct control_message *ctrl;
+    
+    struct timespec sys_time;
+    uint64_t nsec;
+
+    int j=0;
+    uint16_t sent_packets = CONTROL_BURST_SIZE;
+    do{
+        /* Adding same timestamp to a batch of packets*/
+        clock_gettime(CLOCK_REALTIME, &sys_time);
+        nsec = rte_timespec_to_ns(&sys_time);
+        
+        for(int i = 0; i < sent_packets; i ++)
+        {
+            bufs[i] = rte_pktmbuf_alloc(mbuf_pool);
+            if (unlikely(bufs[i] == NULL)) {
+                printf("Couldn't "
+                    "allocate memory for mbuf.\n");
+                break;
+            }
+            ctrl = rte_pktmbuf_mtod(bufs[i], struct control_message*);
+            ctrl->type = 2;
+            ctrl->t = nsec;
+            ctrl->dst_addr = 101;
+            rte_ether_addr_copy(&src_mac_addr, &ctrl->eth_hdr.s_addr);
+            rte_ether_addr_copy(&dst_mac_addr, &ctrl->eth_hdr.d_addr);
+            ctrl->eth_hdr.ether_type = htons(PTP_PROTOCOL);
+            int pkt_size = sizeof(struct control_message);
+            bufs[i]->pkt_len = pkt_size;
+            bufs[i]->data_len = pkt_size;
+        }
+        sent_packets = rte_eth_tx_burst(port, queue_id, bufs, CONTROL_BURST_SIZE);
+        //printf("Number of packets transmitted from machine 1 %" PRIu16 "\n", sent_packets);
+
+        j = j + sent_packets;
+        sleep(1);
+    }
+    while(j < max_packets);
+    
+    /* Free any unsent packets. */
+    if (unlikely(sent_packets < BURST_SIZE)) {
+            uint16_t buf;
+            for (buf = sent_packets; buf < BURST_SIZE; buf++)
+                    rte_pktmbuf_free(bufs[buf]);
+        }
+    
+    return 0;
+}
+
+
 /*
  * The main function, which does initialization and calls the per-lcore
  * functions.
@@ -287,6 +346,7 @@ main(int argc, char *argv[])
     uint16_t portid;
     uint16_t port;
     uint64_t max_packets = 1000000;
+    uint64_t num_control = 10000; // number of control updates
     unsigned lcore_id;
 
     /* Initialize the Environment Abstraction Layer (EAL). */
@@ -330,18 +390,27 @@ main(int argc, char *argv[])
                                     "not be optimal.\n", port);
     
         //struct send_params p1 = {mbuf_pool, 0, 1, max_packets};
-    struct send_params p2 = {mbuf_pool, 0, 0, max_packets};
+    struct send_params data2 = {mbuf_pool, 0, 0, max_packets};
+    struct send_params control = {mbuf_pool, 1, 0, num_control};
     
-    /* call receive function on another lcore*/
+    /* call my_send function on another lcore*/
     lcore_id = rte_get_next_lcore(-1, 1, 0);
     if(lcore_id == RTE_MAX_LCORE)
     {
         rte_exit(EXIT_FAILURE, "Slave core id required!");
     }
-    rte_eal_remote_launch((lcore_function_t *)my_send, &p2, lcore_id);
+    rte_eal_remote_launch((lcore_function_t *)my_send, &data2, lcore_id);
     //rte_eal_remote_launch((lcore_function_t *)my_receive, NULL, lcore_id);
     
-
+    /* call send_control function on another lcore*/
+    lcore_id = rte_get_next_lcore(lcore_id, 1, 0);
+    if(lcore_id == RTE_MAX_LCORE)
+    {
+        rte_exit(EXIT_FAILURE, "Slave core id required!");
+    }
+    rte_eal_remote_launch((lcore_function_t *)send_control, &control, lcore_id);
+    
+    /* call lcore stat on another lcore*/
     lcore_id = rte_get_next_lcore(lcore_id, 1, 0);
     if(lcore_id == RTE_MAX_LCORE)
     {
