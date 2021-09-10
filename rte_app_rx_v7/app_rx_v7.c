@@ -76,7 +76,8 @@ add_timestamps(uint16_t port __rte_unused, uint16_t qidx __rte_unused,
 static uint16_t
 calc_latency(uint16_t port, uint16_t qidx __rte_unused,
         struct rte_mbuf **pkts, uint16_t nb_pkts, void *_ __rte_unused)
-{
+{   
+    static uint64_t totalbatches = 0;
     uint64_t cycles = 0;
     uint64_t queue_ticks = 0;
     uint64_t now = rte_rdtsc();
@@ -87,12 +88,14 @@ calc_latency(uint16_t port, uint16_t qidx __rte_unused,
     }
     latency_numbers.total_cycles += cycles;
     latency_numbers.total_pkts += nb_pkts;
+    totalbatches += 1;
     if (latency_numbers.total_pkts > (100 * 1000)) {
-        printf("Latency = %"PRIu64" cycles\n",
-        latency_numbers.total_cycles / latency_numbers.total_pkts);
+        printf("func - Latency = %"PRIu64" cycles %" PRIu64 " number\n",
+        latency_numbers.total_cycles / latency_numbers.total_pkts, latency_numbers.total_pkts /totalbatches);
         latency_numbers.total_cycles = 0;
         latency_numbers.total_queue_cycles = 0;
         latency_numbers.total_pkts = 0;
+        totalbatches = 0;
     }
     return nb_pkts;
 }
@@ -106,12 +109,12 @@ struct value{
 struct value value_arr[HASH_ENTRIES];
 
 struct rte_ether_addr dst_mac_addr[] = {
-    {{0x98,0x03,0x9b,0x53,0x2a,0xc8}},
-    {{0x98,0x03,0x9b,0x53,0x2a,0xc8}},
-    {{0x98,0x03,0x9b,0x53,0x2a,0xc8}},
-    {{0x98,0x03,0x9b,0x53,0x2a,0xc8}},
-    {{0x98,0x03,0x9b,0x53,0x2a,0xc8}}
-};  // 98:03:9b:53:2a:c8
+    {{0x98,0x03,0x9b,0x32,0x8d,0xda}},
+    {{0x98,0x03,0x9b,0x32,0x8d,0xda}},
+    {{0x98,0x03,0x9b,0x32,0x8d,0xda}},
+    {{0x98,0x03,0x9b,0x32,0x8d,0xda}},
+    {{0x98,0x03,0x9b,0x32,0x8d,0xda}}
+};  // 98:03:9b:32:8d:da
 
 /* create a hash table with the given number of entries*/
 static struct rte_hash *
@@ -286,6 +289,12 @@ void my_receive(const struct rte_hash *handle)
     //printf("\nCore %u receiving packets. [Ctrl+C to quit]\n",
                     //rte_lcore_id());
     
+    uint64_t totalcycles = 0;
+    uint64_t totalpackets = 0;
+    //uint64_t totalnb_rx = 0;
+    uint64_t totalbatches = 0;
+    
+    
     /* Receive maximum of max_packets */
     for(;;){
         /* Get burst of RX packets, from first port of pair. */
@@ -296,11 +305,12 @@ void my_receive(const struct rte_hash *handle)
         if (unlikely(nb_rx == 0))
                 continue;
         
+        uint64_t now = rte_rdtsc();
         for(int i = 0; i < nb_rx; i++)
         {
             my_pkt = rte_pktmbuf_mtod(bufs[i], struct my_message *);
             eth_type = rte_be_to_cpu_16(my_pkt->eth_hdr.ether_type);
-            position = rte_hash_lookup(handle, &my_pkt->dst_addr);
+            //position = rte_hash_lookup(handle, &my_pkt->dst_addr);
             //printf("Position for key %"PRIu16" looked up is %d \n", my_pkt->dst_addr, position);
             
             /* Check for data packet of interest and ignore other broadcasts 
@@ -311,9 +321,24 @@ void my_receive(const struct rte_hash *handle)
                 //printf("Packet length %"PRIu32"\n",rte_pktmbuf_pkt_len(bufs[i]));
                 rx_count = rx_count + 1;
                 rte_ether_addr_copy(&src_mac_addr, &my_pkt->eth_hdr.s_addr);
-                rte_ether_addr_copy(&dst_mac_addr[position], &my_pkt->eth_hdr.d_addr);
+                //rte_ether_addr_copy(&dst_mac_addr[position], &my_pkt->eth_hdr.d_addr);
+                rte_ether_addr_copy(&dst_mac_addr[0], &my_pkt->eth_hdr.d_addr);
             }
         }
+        
+        uint64_t time_diff = rte_rdtsc() - now;
+        totalcycles += time_diff*nb_rx;
+        totalpackets += nb_rx;
+        totalbatches += 1;
+        
+        if (totalpackets > (100 * 1000)) {
+        printf("Latency = %"PRIu64" cycles %"PRIu64" number\n",
+        totalcycles / totalpackets, totalpackets/totalbatches);
+        totalcycles = 0;
+        totalpackets = 0;
+        totalbatches = 0;
+    }
+        
         
         const uint16_t nb_tx = rte_eth_tx_burst(0, 0, bufs, nb_rx);
         tx_count = tx_count + nb_tx;
@@ -325,6 +350,7 @@ void my_receive(const struct rte_hash *handle)
                 rte_pktmbuf_free(bufs[buf]);
         }
     }
+    
     
     //printf("\nTotal Number of packets received by machine 2 is %"PRIu64, rx_count);
     //printf("\nTotal Number of packets transmitted by machine 2 is %"PRIu64"\n", tx_count);
@@ -398,7 +424,7 @@ main(int argc, char *argv[])
 
     /* Create and populate hash table*/
     struct rte_hash * handle;
-    uint16_t num_entries = HASH_ENTRIES; // number of entries in the hash table
+    uint16_t num_entries = 500; // number of entries in the hash table
     handle = create_hash_table(num_entries);
     printf("Populating hash table\n");
     populate_hash_table(handle, num_entries);
