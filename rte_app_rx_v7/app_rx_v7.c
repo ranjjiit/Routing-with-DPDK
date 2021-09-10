@@ -327,7 +327,7 @@ void my_receive(const struct rte_hash *handle)
         }
         
         uint64_t time_diff = rte_rdtsc() - now;
-        totalcycles += time_diff*nb_rx;
+        totalcycles += time_diff;
         totalpackets += nb_rx;
         totalbatches += 1;
         
